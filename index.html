@@ -138,6 +138,9 @@
         th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #e9ecef; }
         th { background-color: var(--table-header); color: #000; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
         tbody tr:hover { background-color: #f8f9fa; }
+        tbody tr.row-overdue td { background-color: #fde2e2; border-top: 1px solid #dc3545; border-bottom: 1px solid #dc3545; }
+        tbody tr.row-overdue td:first-child { border-left: 4px solid #dc3545; }
+        tbody tr.row-overdue:hover td { background-color: #fbd0d0; }
 
         .dias-badge {
             background-color: var(--danger);
@@ -308,6 +311,10 @@
             <button class="btn btn-outline" style="color: white; border-color: rgba(255,255,255,0.3);" onclick="voltarHome()">Voltar para a Home</button>
         </div>
 
+        <div style="background:#fff4e5;border-left:4px solid #f0ad4e;padding:14px 18px;margin:0 0 18px;color:#333;border-radius:4px;">
+            <strong>Permanência vencida: SKU HNKMK3575</strong> · O prazo aprovado de 90 dias terminou em 30/09/2026. Localize o item destacado na lista para definir o tratamento.
+        </div>
+
         <div class="bulk-action-bar" id="bulk-bar">
             <div>
                 <strong id="selected-count">0</strong> itens selecionados.
@@ -436,7 +443,7 @@
                         <td><span class="dias-badge dias-warning">180 dias</span></td>
                         <td>HNKMK3574</td><td>683453</td><td>BALDE HEINEKEN ALUMINIO PREMIUM M1</td><td>DIRETORIA ON - OPP - OPP</td><td>LUIS FELIPE RISSO</td><td>MATERIAIS 2026_SP</td><td style="text-align: right; font-weight: bold;">248</td>
                     </tr>
-                    <tr>
+                    <tr class="row-overdue">
                         <td style="text-align: center;"><input type="checkbox" class="item-cb" onclick="updateSelection()" data-sku="HNKMK3575" data-desc="CERVEGELA HEINEKEN"></td>
                         <td><span class="dias-badge dias-warning">180 dias</span></td>
                         <td>HNKMK3575</td><td>668816</td><td>CERVEGELA HEINEKEN</td><td>DIRETORIA ON - OPP - OPP</td><td>LUIS FELIPE RISSO</td><td>MATERIAIS 2026_SP</td><td style="text-align: right; font-weight: bold;">280</td>
@@ -475,6 +482,15 @@
             <p id="modal-desc"></p>
             <div id="modal-justificativa" style="display: none;">
                 <textarea placeholder="Detalhe o motivo da permanência..."></textarea>
+                <label for="prazo-permanencia" style="display:block;font-size:13px;font-weight:600;margin:0 0 6px;">Prazo solicitado</label>
+                <select id="prazo-permanencia" class="select-area"><option value="30">30 dias</option><option value="60">60 dias</option><option value="90" selected>90 dias</option></select>
+            </div>
+            <div id="destino-bolsao" style="display:none;margin:0 0 18px;">
+                <label for="area-destino" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Área responsável pelo recebimento</label>
+                <select id="area-destino" class="select-area" onchange="atualizarSubareas()"><option value="Diretoria ON">Diretoria ON</option><option value="Comercial">Comercial</option><option value="Marketing">Marketing</option><option value="Operações">Operações</option></select>
+                <label for="subarea-destino" style="display:block;font-size:13px;font-weight:600;margin:10px 0 6px;">Subárea</label>
+                <select id="subarea-destino" class="select-area"><option>Trade MKT</option><option>Institucional</option><option>OPP</option></select>
+                <p style="font-size:12px;color:#6c757d;margin:8px 0 0;">O dono da área e da subárea receberá um e-mail para aprovar ou recusar o recebimento dos itens e quantidades.</p>
             </div>
             <div style="text-align: right;">
                 <button class="btn btn-outline" style="margin-right: 10px;" onclick="fecharModal('modal-acao')">Cancelar</button>
@@ -532,22 +548,43 @@
             document.getElementById(id).style.display = 'none';
         }
 
+        const excecoes = JSON.parse(localStorage.getItem('slowmoving-excecoes') || '[]');
+        const prazoSalvo = localStorage.getItem('slowmoving-prazo') || '90';
+        document.getElementById('prazo-permanencia').value = prazoSalvo;
+        function aplicarExcecoesNaLista() {
+            const skus = new Set(excecoes.map(item => item.sku.toUpperCase()));
+            document.querySelectorAll('.item-cb').forEach(cb => {
+                const row = cb.closest('tr');
+                row.style.display = skus.has(cb.dataset.sku.toUpperCase()) ? 'none' : '';
+                if (row.style.display === 'none') cb.checked = false;
+            });
+            updateSelection();
+        }
+
+        function atualizarSubareas() {
+            const opcoes = {'Diretoria ON':['Trade MKT','Institucional','OPP'],'Comercial':['Vendas','Trade MKT'],'Marketing':['Branding','Eventos','Institucional'],'Operações':['Logística','Armazém','Distribuição']};
+            document.getElementById('subarea-destino').innerHTML = opcoes[document.getElementById('area-destino').value].map(item => `<option>${item}</option>`).join('');
+        }
+
         const checkboxes = document.querySelectorAll('.item-cb');
         const bulkBar = document.getElementById('bulk-bar');
         const selectedCountEl = document.getElementById('selected-count');
         const selectAllCb = document.getElementById('selectAll');
 
         function toggleAll(source) {
-            checkboxes.forEach(cb => cb.checked = source.checked);
+            checkboxes.forEach(cb => { if (cb.closest('tr').style.display !== 'none') cb.checked = source.checked; });
             updateSelection();
         }
 
         function updateSelection() {
-            const selectedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+            const visiveis = Array.from(checkboxes).filter(cb => cb.closest('tr').style.display !== 'none');
+            const selectedCount = visiveis.filter(cb => cb.checked).length;
             selectedCountEl.innerText = selectedCount;
             bulkBar.classList.toggle('active', selectedCount > 0);
-            selectAllCb.checked = selectedCount === checkboxes.length && checkboxes.length > 0;
+            selectAllCb.checked = selectedCount === visiveis.length && visiveis.length > 0;
         }
+
+        aplicarExcecoesNaLista();
 
         let acaoAtual = '';
 
@@ -565,12 +602,15 @@
             const titulo = document.getElementById('modal-titulo');
             const desc = document.getElementById('modal-desc');
             const just = document.getElementById('modal-justificativa');
+            const destino = document.getElementById('destino-bolsao');
 
             just.style.display = 'none';
+            destino.style.display = 'none';
 
             if (acao === 'bolsao') {
                 titulo.innerText = 'Transferir para Bolsão';
-                desc.innerHTML = `Confirmar a solicitação de transferência de <strong>${count} item(ns)</strong> para o bolsão?`;
+                desc.innerHTML = `Solicitar recebimento de <strong>${count} item(ns)</strong> em outra área:`;
+                destino.style.display = 'block';
             } else if (acao === 'justificar') {
                 titulo.innerText = 'Justificar Permanência';
                 desc.innerHTML = `Justifique a manutenção de <strong>${count} item(ns)</strong> no estoque:`;
@@ -582,9 +622,11 @@
         function executarAcao() {
             fecharModal('modal-acao');
             if (acaoAtual === 'bolsao') {
-                mostrarToast('Solicitação de transferência encaminhada para aprovação.');
+                const area = document.getElementById('area-destino').value;
+                const subarea = document.getElementById('subarea-destino').value;
+                mostrarToast(`Solicitação registrada para notificação dos responsáveis: ${area} / ${subarea}.`);
             } else if (acaoAtual === 'justificar') {
-                mostrarToast('Justificativa registrada e enviada para aprovação.');
+                mostrarToast(`Justificativa registrada. Reavaliação em ${document.getElementById('prazo-permanencia').value} dias.`);
             }
             limparSelecao();
         }
